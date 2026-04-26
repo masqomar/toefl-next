@@ -94,19 +94,21 @@ model VerificationToken {
 }
 
 model Exam {
-  id          String   @id @default(cuid())
-  title       String
-  description String?
-  thumbnail   String?
-  type        ExamType
-  price       Float    @default(0)
-  status      Boolean  @default(true)
-  createdAt   DateTime @default(now())
+  id            String   @id @default(cuid())
+  title         String
+  description   String?
+  thumbnail     String?
+  type          ExamType
+  price         Float    @default(0)
+  status        Boolean  @default(true)
+  maxViolations Int      @default(5)
+  maxAudioReplay Int     @default(2)
+  createdAt     DateTime @default(now())
 
-  sections    ExamSection[]
-  orderItems  OrderItem[]
-  vouchers    Voucher[]
-  accesses    ExamAccess[]
+  sections     ExamSection[]
+  orderItems   OrderItem[]
+  vouchers     Voucher[]
+  accesses     ExamAccess[]
   examSessions ExamSession[]
 }
 

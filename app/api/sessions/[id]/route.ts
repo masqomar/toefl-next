@@ -83,6 +83,8 @@ export async function GET(
       sessionId: examSession.id,
       examId: examSession.examId,
       examTitle: examSession.exam.title,
+      maxViolations: examSession.exam.maxViolations,
+      maxAudioReplay: examSession.exam.maxAudioReplay,
       status: examSession.status,
       currentSection: examSession.currentSection,
       startedAt: examSession.startedAt,

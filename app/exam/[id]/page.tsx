@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { useAntiCheat } from "@/components/AntiCheatProvider";
 
 interface Question {
   answerId: string;
@@ -36,6 +37,9 @@ interface ExamData {
   sessionId: string;
   examId: string;
   examTitle: string;
+  maxViolations: number;
+  maxAudioReplay: number;
+  violationCount: number;
   status: string;
   currentSection: number;
   startedAt: string;
@@ -74,8 +78,167 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
   const [showResults, setShowResults] = useState(false);
   const [scoreResult, setScoreResult] = useState<ScoreResult | null>(null);
   const [error, setError] = useState("");
+  const [showViolationWarning, setShowViolationWarning] = useState(false);
+  const [violationCount, setViolationCount] = useState(0);
+  const [isMaxReached, setIsMaxReached] = useState(false);
+  const [audioReplayCount, setAudioReplayCount] = useState<Record<string, number>>({});
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [audioStarted, setAudioStarted] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const examDataRef = useRef(examData);
+  const maxViolationsRef = useRef(5);
+  const isMaxReachedRef = useRef(false);
+  const audioReplayCountRef = useRef<Record<string, number>>({});
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    examDataRef.current = examData;
+    if (examData?.maxViolations) {
+      maxViolationsRef.current = examData.maxViolations;
+    }
+  }, [examData]);
+
+  useEffect(() => {
+    isMaxReachedRef.current = isMaxReached;
+  }, [isMaxReached]);
+
+  // Initialize violationCount from server when examData loads
+  useEffect(() => {
+    if (examData && examData.violationCount !== undefined) {
+      setViolationCount(examData.violationCount);
+      if (examData.violationCount >= examData.maxViolations) {
+        setIsMaxReached(true);
+        isMaxReachedRef.current = true;
+      }
+    }
+  }, [examData]);
+
+  // Redirect if already maxed out
+  useEffect(() => {
+    if (isMaxReached && examData) {
+      router.push(`/exam/${examId}/kicked-out`);
+    }
+  }, [isMaxReached, examData, router, examId]);
+
+  // Keep audioReplayCountRef in sync with state
+  useEffect(() => {
+    audioReplayCountRef.current = audioReplayCount;
+  }, [audioReplayCount]);
+
+  // Reset audio state when changing questions
+  useEffect(() => {
+    // Stop and cleanup any playing audio
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = ""; // Clear source
+      audioRef.current = null;
+    }
+    setIsPlaying(false);
+    setAudioStarted(false);
+  }, [currentQuestionIndex, currentSectionIndex]);
+
+  // Audio internal function
+  const playAudioInternal = (audioUrl: string) => {
+    const currentReplay = audioReplayCountRef.current[audioUrl] || 0;
+    const maxReplay = examDataRef.current?.maxAudioReplay || 2;
+
+    if (currentReplay >= maxReplay) {
+      return;
+    }
+
+    // Stop any existing audio first
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = "";
+    }
+
+    const audio = new Audio(audioUrl);
+    audioRef.current = audio;
+    setAudioStarted(true);
+    setIsPlaying(true);
+
+    // Try to play
+    const playPromise = audio.play();
+
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
+          // Success - audio is playing
+        })
+        .catch((err) => {
+          console.error("Audio play failed:", err);
+          setIsPlaying(false);
+        });
+    }
+
+    audio.onended = () => {
+      setIsPlaying(false);
+      // Increment replay count
+      setAudioReplayCount((prev) => ({
+        ...prev,
+        [audioUrl]: (prev[audioUrl] || 0) + 1,
+      }));
+    };
+
+    audio.onerror = (e) => {
+      console.error("Audio error:", e);
+      setIsPlaying(false);
+    };
+  };
+
+  // Navigate to question with auto-play audio for listening
+  const navigateToQuestion = (idx: number) => {
+    const question = currentSection?.questions[idx];
+    setCurrentQuestionIndex(idx);
+
+    // Auto-play audio for listening section
+    if (currentSection?.sectionType === "LISTENING" && question?.audioUrl) {
+      // Use setTimeout to ensure state updates first
+      setTimeout(() => {
+        playAudioInternal(question.audioUrl!);
+      }, 150);
+    }
+  };
+
+  // Handle violation - increment counter and show warning
+  const handleViolation = useCallback(() => {
+    // Guard: already at max or no exam data yet
+    if (isMaxReachedRef.current || !examDataRef.current) return;
+
+    const maxV = maxViolationsRef.current;
+    const sessionId = examDataRef.current.sessionId;
+
+    setViolationCount((prev) => {
+      const newCount = prev + 1;
+      // Check max violations
+      if (newCount >= maxV) {
+        setIsMaxReached(true);
+        isMaxReachedRef.current = true;
+        // Force submit and redirect to kicked-out page
+        fetch(`/api/sessions/${sessionId}/submit`, { method: "POST" })
+          .then(() => {
+            router.push(`/exam/${examId}/kicked-out`);
+          });
+        return newCount;
+      }
+      return newCount;
+    });
+    setShowViolationWarning(true);
+    // Auto-hide warning after 3 seconds
+    setTimeout(() => {
+      setShowViolationWarning(false);
+    }, 3000);
+  }, [router, examId]);
+
+  // Anti-cheat hook - only passes callback, no internal counter
+  useAntiCheat({
+    sessionId: examData?.sessionId || "",
+    onViolation: handleViolation,
+    enabled: !showSectionIntro && !showResults && !isMaxReached,
+    maxViolations: examData?.maxViolations || 5,
+  });
 
   // Fetch exam data
   useEffect(() => {
@@ -154,10 +317,8 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
     if (!currentSection) return;
 
     if (currentSectionIndex === examData.sections.length - 1) {
-      // Last section - submit exam
       handleSubmit();
     } else {
-      // Move to next section
       goToNextSection();
     }
   }, [examData, currentSectionIndex]);
@@ -167,7 +328,6 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
     setAnswers((prev) => {
       const newAnswers = { ...prev, [answerId]: selectedAnswer };
 
-      // Update answered count for current section
       if (examData) {
         const currentSection = examData.sections[currentSectionIndex];
         if (currentSection) {
@@ -198,6 +358,21 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
     const currentSection = examData?.sections[currentSectionIndex];
     if (currentSection) {
       setSectionTimeRemaining(currentSection.duration * 60);
+
+      // Reset audio state for new section
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = "";
+        audioRef.current = null;
+      }
+      setAudioReplayCount({});
+
+      // Auto-play audio for listening section (after user click = allowed)
+      if (currentSection.sectionType === "LISTENING" && currentSection.questions[0]?.audioUrl) {
+        setTimeout(() => {
+          playAudioInternal(currentSection.questions[0].audioUrl!);
+        }, 150);
+      }
     }
   };
 
@@ -206,7 +381,6 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
     const currentSection = examData.sections[currentSectionIndex];
     if (!currentSection) return false;
 
-    // Must answer all questions in current section
     const answeredCount = currentSection.questions.filter((q) => answers[q.answerId]).length;
     return answeredCount === currentSection.questions.length;
   };
@@ -220,11 +394,9 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
       setCurrentQuestionIndex(0);
       setShowSectionIntro(true);
 
-      // Set timer for next section
       const nextSection = examData!.sections[currentSectionIndex + 1];
       setSectionTimeRemaining(nextSection.duration * 60);
     } else {
-      // Last section completed
       handleSubmit();
     }
   };
@@ -249,7 +421,6 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
     }
   };
 
-  // Format time
   const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -382,6 +553,21 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
               </div>
             </div>
 
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+              <div className="flex items-start gap-2">
+                <span className="text-xl">⚠️</span>
+                <div className="text-sm text-red-800">
+                  <p className="font-semibold mb-1">Anti-Cheat Active</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>Tab switching is monitored</li>
+                    <li>Copy/paste is disabled</li>
+                    <li>Right-click is disabled</li>
+                    <li>After {examData.maxViolations} violations, exam will auto-submit</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
               <p className="text-sm text-yellow-800">
                 <strong>Important:</strong> You must answer all questions in this section before proceeding to the next.
@@ -400,15 +586,25 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
 
   return (
     <div className="min-h-screen bg-gray-100">
+      {/* Violation Warning Toast */}
+      {showViolationWarning && !isMaxReached && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">⚠️</span>
+            <span className="font-medium">Violation detected! Be careful.</span>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-white shadow-sm sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/dashboard/exams" className="text-gray-600 hover:text-gray-900">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </Link>
+            <div className="flex items-center gap-2">
+              <span className="text-red-600 text-lg">🔒</span>
+              <span className="text-sm text-gray-500 hidden sm:inline">Proctored</span>
+            </div>
+            <div className="hidden md:block h-6 w-px bg-gray-300" />
             <div>
               <h1 className="font-semibold text-gray-900">{examData.examTitle}</h1>
               <p className="text-sm text-gray-500">{currentSection.title}</p>
@@ -416,6 +612,14 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
           </div>
 
           <div className="flex items-center gap-6">
+            {/* Violations Counter */}
+            <div className="text-center">
+              <p className="text-xs text-gray-500">Violations</p>
+              <p className={`text-lg font-bold ${violationCount >= 3 ? "text-red-600" : "text-gray-900"}`}>
+                {violationCount}/{examData.maxViolations}
+              </p>
+            </div>
+
             {/* Section Progress */}
             <div className="hidden sm:block">
               <p className="text-sm text-gray-500">Section {currentSectionIndex + 1}/{examData.sections.length}</p>
@@ -438,7 +642,7 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
             {/* Timer */}
             <div className="text-right">
               <p className="text-sm text-gray-500">Time Left</p>
-              <p className={`text-xl font-bold ${sectionTimeRemaining < 60 ? "text-red-600" : "text-gray-900"}`}>
+              <p className={`text-xl font-bold ${sectionTimeRemaining < 60 ? "text-red-600 animate-pulse" : "text-gray-900"}`}>
                 {formatTime(sectionTimeRemaining)}
               </p>
             </div>
@@ -455,103 +659,201 @@ export default function ExamPage({ params }: { params: Promise<{ id: string }> }
       </header>
 
       {/* Main content */}
-      <main className="max-w-3xl mx-auto px-4 py-8">
-        {/* Progress Info */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <Badge variant="info" className="text-sm">
-              {currentSection.sectionType}
-            </Badge>
-          </div>
-          <p className="text-gray-600">
-            <span className="font-medium">{answeredCount}</span> / {totalQuestionsInSection} answered
-          </p>
-        </div>
+      <main className="max-w-7xl mx-auto px-4 py-8">
+        <div className="flex flex-col lg:flex-row gap-6">
+          {/* Question Panel */}
+          <div className="flex-1">
+            {/* Progress Info */}
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <Badge variant="info" className="text-sm">
+                  {currentSection.sectionType}
+                </Badge>
+              </div>
+              <p className="text-gray-600">
+                <span className="font-medium">{answeredCount}</span> / {totalQuestionsInSection} answered
+              </p>
+            </div>
 
-        {/* Question */}
-        <Card className="mb-6">
-          <CardHeader>
+            {/* Question */}
+            <Card className="mb-6">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle>
+                    Question {currentQuestionIndex + 1} of {totalQuestionsInSection}
+                  </CardTitle>
+                  {answers[currentQuestion.answerId] && (
+                    <Badge variant="success">Answered</Badge>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {/* Audio Player for Listening Section */}
+                {currentSection.sectionType === "LISTENING" && currentQuestion.audioUrl && (
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => playAudioInternal(currentQuestion.audioUrl!)}
+                          disabled={isPlaying || audioReplayCount[currentQuestion.audioUrl!] >= (examData?.maxAudioReplay || 2) || submitting || isMaxReached}
+                          className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
+                            isPlaying
+                              ? "bg-purple-300 cursor-not-allowed"
+                              : audioReplayCount[currentQuestion.audioUrl!] >= (examData?.maxAudioReplay || 2)
+                              ? "bg-gray-200 cursor-not-allowed"
+                              : "bg-purple-600 hover:bg-purple-700 text-white"
+                          } disabled:opacity-50`}
+                        >
+                          {isPlaying ? (
+                            <span className="text-xl animate-pulse">⏸️</span>
+                          ) : (
+                            <span className="text-xl">🔄</span>
+                          )}
+                        </button>
+                        <div>
+                          <p className="font-medium text-purple-900">
+                            {isPlaying ? "Playing..." : audioStarted ? "Audio" : "Tap to Play"}
+                          </p>
+                          <p className="text-sm text-purple-700">
+                            Replay: {audioReplayCount[currentQuestion.audioUrl!] || 0} / {examData?.maxAudioReplay || 2}
+                          </p>
+                        </div>
+                      </div>
+                      {audioStarted && audioReplayCount[currentQuestion.audioUrl!] >= (examData?.maxAudioReplay || 2) && (
+                        <Badge variant="warning">Max Reached</Badge>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Passage (if any) */}
+                {currentQuestion.passageText && (
+                  <div className="bg-blue-50 p-4 rounded-lg mb-6">
+                    <p className="text-sm font-medium text-blue-800 mb-2">Passage:</p>
+                    <p className="text-gray-700 whitespace-pre-wrap">{currentQuestion.passageText}</p>
+                  </div>
+                )}
+
+                {/* Question text */}
+                <p className="text-lg text-gray-900 mb-6">{currentQuestion.questionText}</p>
+
+                {/* Options */}
+                <div className="space-y-3">
+                  {["A", "B", "C", "D"].map((option) => (
+                    <label
+                      key={option}
+                      className={`flex items-start gap-3 p-4 rounded-lg border transition-colors select-none ${
+                        submitting || isMaxReached
+                          ? "cursor-not-allowed opacity-50"
+                          : "cursor-pointer hover:bg-gray-50"
+                      } ${
+                        answers[currentQuestion.answerId] === option
+                          ? "border-blue-500 bg-blue-50"
+                          : "border-gray-200"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name={`question-${currentQuestion.answerId}`}
+                        value={option}
+                        checked={answers[currentQuestion.answerId] === option}
+                        onChange={() => handleAnswerChange(currentQuestion.answerId, option)}
+                        disabled={submitting || isMaxReached}
+                        className="mt-1 w-4 h-4 text-blue-600"
+                      />
+                      <span className="font-medium text-gray-700">{option}.</span>
+                      <span className="text-gray-700">{currentQuestion.options[option as keyof typeof currentQuestion.options]}</span>
+                    </label>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Navigation */}
             <div className="flex items-center justify-between">
-              <CardTitle>
-                Question {currentQuestionIndex + 1} of {totalQuestionsInSection}
-              </CardTitle>
-              {answers[currentQuestion.answerId] && (
-                <Badge variant="success">Answered</Badge>
+              <Button
+                variant="outline"
+                onClick={() => navigateToQuestion(Math.max(0, currentQuestionIndex - 1))}
+                disabled={currentQuestionIndex === 0 || submitting || isMaxReached}
+              >
+                Previous
+              </Button>
+
+              {currentQuestionIndex === totalQuestionsInSection - 1 ? (
+                canGoNext() ? (
+                  currentSectionIndex === examData.sections.length - 1 ? (
+                    <Button onClick={() => setShowConfirmSubmit(true)} disabled={submitting || isMaxReached}>
+                      Submit Exam
+                    </Button>
+                  ) : (
+                    <Button onClick={() => setShowConfirmNext(true)} disabled={isMaxReached}>
+                      Next Section →
+                    </Button>
+                  )
+                ) : (
+                  <span className="text-sm text-yellow-600">
+                    Answer all questions to continue
+                  </span>
+                )
+              ) : (
+                <Button
+                  onClick={() => navigateToQuestion(currentQuestionIndex + 1)}
+                  disabled={submitting || isMaxReached}
+                >
+                  Next
+                </Button>
               )}
             </div>
-          </CardHeader>
-          <CardContent>
-            {/* Passage (if any) */}
-            {currentQuestion.passageText && (
-              <div className="bg-blue-50 p-4 rounded-lg mb-6">
-                <p className="text-sm font-medium text-blue-800 mb-2">Passage:</p>
-                <p className="text-gray-700 whitespace-pre-wrap">{currentQuestion.passageText}</p>
-              </div>
-            )}
+          </div>
 
-            {/* Question text */}
-            <p className="text-lg text-gray-900 mb-6">{currentQuestion.questionText}</p>
+          {/* Question Navigator Sidebar */}
+          <div className="lg:w-72">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Questions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-5 gap-2 mb-4">
+                  {currentSection.questions.map((q, idx) => {
+                    const isAnswered = !!answers[q.answerId];
+                    const isCurrent = idx === currentQuestionIndex;
+                    return (
+                      <button
+                        key={q.answerId}
+                        onClick={() => navigateToQuestion(idx)}
+                        disabled={submitting || isMaxReached}
+                        className={`w-10 h-10 rounded-lg font-medium text-sm transition-colors ${
+                          isCurrent
+                            ? "bg-blue-600 text-white"
+                            : isAnswered
+                            ? "bg-green-100 text-green-700 border border-green-300 hover:bg-green-200"
+                            : "bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200"
+                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      >
+                        {idx + 1}
+                      </button>
+                    );
+                  })}
+                </div>
 
-            {/* Options */}
-            <div className="space-y-3">
-              {["A", "B", "C", "D"].map((option) => (
-                <label
-                  key={option}
-                  className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors ${
-                    answers[currentQuestion.answerId] === option
-                      ? "border-blue-500 bg-blue-50"
-                      : "border-gray-200 hover:bg-gray-50"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name={`question-${currentQuestion.answerId}`}
-                    value={option}
-                    checked={answers[currentQuestion.answerId] === option}
-                    onChange={() => handleAnswerChange(currentQuestion.answerId, option)}
-                    className="mt-1 w-4 h-4 text-blue-600"
-                  />
-                  <span className="font-medium text-gray-700">{option}.</span>
-                  <span className="text-gray-700">{currentQuestion.options[option as keyof typeof currentQuestion.options]}</span>
-                </label>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Navigation */}
-        <div className="flex items-center justify-between">
-          <Button
-            variant="outline"
-            onClick={() => setCurrentQuestionIndex((prev) => Math.max(0, prev - 1))}
-            disabled={currentQuestionIndex === 0}
-          >
-            Previous
-          </Button>
-
-          {currentQuestionIndex === totalQuestionsInSection - 1 ? (
-            canGoNext() ? (
-              currentSectionIndex === examData.sections.length - 1 ? (
-                <Button onClick={() => setShowConfirmSubmit(true)} disabled={submitting}>
-                  Submit Exam
-                </Button>
-              ) : (
-                <Button onClick={() => setShowConfirmNext(true)}>
-                  Next Section →
-                </Button>
-              )
-            ) : (
-              <span className="text-sm text-yellow-600">
-                Answer all questions to continue
-              </span>
-            )
-          ) : (
-            <Button
-              onClick={() => setCurrentQuestionIndex((prev) => prev + 1)}
-            >
-              Next
-            </Button>
-          )}
+                {/* Legend */}
+                <div className="flex flex-wrap gap-4 text-xs text-gray-600">
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-3 rounded bg-blue-600"></div>
+                    <span>Current</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-3 rounded bg-green-100 border border-green-300"></div>
+                    <span>Answered</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-3 rounded bg-gray-100 border border-gray-300"></div>
+                    <span>Unanswered</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </main>
 

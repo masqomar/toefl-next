@@ -87,6 +87,8 @@ async function main() {
       type: "FREE",
       price: 0,
       status: true,
+      maxViolations: 5,
+      maxAudioReplay: 2,
     },
   });
 
@@ -110,7 +112,8 @@ async function main() {
     {
       questionNumber: 1,
       questionText: "What will the woman probably do next?",
-      passageText: "W: I can't find my notes from the lecture yesterday. M: Didn't you take any? The professor was explaining the assignment for next week. W: No, I was too busy trying to understand what he was saying.",
+      audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+      passageText: null,
       optionA: "Review her notes",
       optionB: "Go to the library",
       optionC: "Ask the professor about the assignment",
@@ -121,7 +124,8 @@ async function main() {
     {
       questionNumber: 2,
       questionText: "What are the speakers mainly discussing?",
-      passageText: "M: Did you hear about the new student exchange program? W: Yes, they're accepting applications for next semester. Students can study abroad for up to a year.",
+      audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+      passageText: null,
       optionA: "A graduation ceremony",
       optionB: "A student exchange program",
       optionC: "A scholarship opportunity",
@@ -132,7 +136,8 @@ async function main() {
     {
       questionNumber: 3,
       questionText: "Where does this conversation most likely take place?",
-      passageText: "M: Two tickets for the 8 o'clock show, please. W: I'm sorry, that showing is sold out. Would you like the 10 o'clock instead?",
+      audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+      passageText: null,
       optionA: "At a movie theater",
       optionB: "At a restaurant",
       optionC: "At a hotel",
@@ -143,7 +148,8 @@ async function main() {
     {
       questionNumber: 4,
       questionText: "What does the man imply about the book?",
-      passageText: "W: This book is really interesting. Have you read it? M: I've tried, but it's quite challenging. The vocabulary is quite advanced.",
+      audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
+      passageText: null,
       optionA: "The book is too easy",
       optionB: "The book is boring",
       optionC: "The book is difficult to read",
@@ -154,7 +160,8 @@ async function main() {
     {
       questionNumber: 5,
       questionText: "Why is the woman concerned?",
-      passageText: "M: The weather forecast says it might rain all weekend. W: That would be terrible. We were planning a camping trip.",
+      audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3",
+      passageText: null,
       optionA: "She forgot to check the weather",
       optionB: "Her camping trip might be ruined",
       optionC: "She doesn't like the outdoors",
@@ -165,7 +172,8 @@ async function main() {
     {
       questionNumber: 6,
       questionText: "What can be inferred about the man?",
-      passageText: "W: You look tired. Did you stay up all night? M: I had to finish my research paper. It's due tomorrow morning.",
+      audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3",
+      passageText: null,
       optionA: "He enjoys staying up late",
       optionB: "He has good time management",
       optionC: "He procrastinates on his work",
@@ -176,7 +184,8 @@ async function main() {
     {
       questionNumber: 7,
       questionText: "What will the students probably do in class?",
-      passageText: "M: Professor, for today's assignment, do we need to bring our textbooks? W: No, just your notes and a pen. We'll be doing a group discussion.",
+      audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3",
+      passageText: null,
       optionA: "Take a quiz",
       optionB: "Have a group discussion",
       optionC: "Watch a video",
@@ -187,7 +196,8 @@ async function main() {
     {
       questionNumber: 8,
       questionText: "What is the man's attitude toward the project?",
-      passageText: "W: The research project is taking longer than expected. M: That's okay. Good research takes time. We want to make sure it's done right.",
+      audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3",
+      passageText: null,
       optionA: "Impatient",
       optionB: "Indifferent",
       optionC: "Supportive and patient",
@@ -198,7 +208,8 @@ async function main() {
     {
       questionNumber: 9,
       questionText: "What happened to the woman's computer?",
-      passageText: "M: You look frustrated. What's wrong? W: My computer crashed and I lost all my work. I didn't save a backup.",
+      audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3",
+      passageText: null,
       optionA: "It was stolen",
       optionB: "It crashed and lost data",
       optionC: "It won't turn on",
@@ -209,7 +220,8 @@ async function main() {
     {
       questionNumber: 10,
       questionText: "What does the professor suggest the student do?",
-      passageText: "S: I'm having trouble understanding this chapter. P: I'd recommend visiting the tutoring center. They have free study sessions every week.",
+      audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-10.mp3",
+      passageText: null,
       optionA: "Drop the class",
       optionB: "Read the chapter again",
       optionC: "Visit the tutoring center",

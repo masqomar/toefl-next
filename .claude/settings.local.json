@@ -8,7 +8,12 @@
       "Bash(npm run *)",
       "WebFetch(domain:pris.ly)",
       "WebFetch(domain:www.prisma.io)",
-      "WebFetch(domain:minimax-algeng-chat-tts-us.oss-us-east-1.aliyuncs.com)"
+      "WebFetch(domain:minimax-algeng-chat-tts-us.oss-us-east-1.aliyuncs.com)",
+      "Bash(npx tsc *)",
+      "Bash(psql \"postgresql://postgres:postgres@localhost:5432/toefl_itp_platform\" -c \"SELECT id, title, maxViolations FROM \\\\\"Exam\\\\\";\")",
+      "Bash(psql \"postgresql://postgres:postgres@localhost:5432/toefl_itp_platform\" -c \"ALTER TABLE \\\\\"Exam\\\\\" ADD COLUMN \\\\\"maxViolations\\\\\" INTEGER NOT NULL DEFAULT 5;\")",
+      "Bash(psql \"postgresql://postgres:postgres@localhost:5432/toefl_itp_platform\" -c 'SELECT id, title, \"maxViolations\" FROM \"Exam\";')",
+      "Bash(npx tsx *)"
     ]
   }
 }

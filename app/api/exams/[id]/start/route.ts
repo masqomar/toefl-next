@@ -14,21 +14,11 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Check if user has access
+    // Get exam
     const exam = await prisma.exam.findFirst({
       where: {
         id: examId,
         status: true,
-        accesses: {
-          some: {
-            userId: session.user.id,
-            isActive: true,
-            OR: [
-              { expiredAt: null },
-              { expiredAt: { gt: new Date() } },
-            ],
-          },
-        },
       },
       include: {
         sections: {
@@ -42,7 +32,43 @@ export async function POST(
 
     if (!exam) {
       return NextResponse.json(
-        { error: "You don't have access to this exam or exam not found" },
+        { error: "Exam not found" },
+        { status: 404 }
+      );
+    }
+
+    // Check user access
+    let hasAccess = false;
+    const existingAccess = await prisma.examAccess.findFirst({
+      where: {
+        userId: session.user.id,
+        examId,
+        isActive: true,
+        OR: [
+          { expiredAt: null },
+          { expiredAt: { gt: new Date() } },
+        ],
+      },
+    });
+
+    if (existingAccess) {
+      hasAccess = true;
+    } else if (exam.type === "FREE") {
+      // Auto-grant access for FREE exams
+      await prisma.examAccess.create({
+        data: {
+          userId: session.user.id,
+          examId,
+          accessType: "FREE",
+          isActive: true,
+        },
+      });
+      hasAccess = true;
+    }
+
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: "You don't have access to this exam. Please purchase or use a voucher." },
         { status: 403 }
       );
     }
@@ -61,6 +87,7 @@ export async function POST(
       return NextResponse.json({
         sessionId: existingSession.id,
         examId: existingSession.examId,
+        maxViolations: exam.maxViolations,
         status: existingSession.status,
         currentSection: existingSession.currentSection,
         startedAt: existingSession.startedAt,
@@ -90,6 +117,7 @@ export async function POST(
     return NextResponse.json({
       sessionId: newSession.id,
       examId: newSession.examId,
+      maxViolations: exam.maxViolations,
       status: newSession.status,
       currentSection: newSession.currentSection,
       startedAt: newSession.startedAt,

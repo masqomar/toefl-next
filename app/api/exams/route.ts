@@ -53,7 +53,8 @@ export async function GET() {
         duration: s.duration,
         questionCount: s._count.questions,
       })),
-      hasAccess: exam.accesses.length > 0,
+      // FREE exams always have access
+      hasAccess: exam.type === "FREE" || exam.accesses.length > 0,
     }));
 
     return NextResponse.json(formattedExams);
