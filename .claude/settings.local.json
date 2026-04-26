@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:authjs.dev)",
+      "Bash(npm install *)",
+      "Bash(npx prisma *)",
+      "Bash(openssl rand *)",
+      "Bash(npm run *)",
+      "WebFetch(domain:pris.ly)",
+      "WebFetch(domain:www.prisma.io)",
+      "WebFetch(domain:minimax-algeng-chat-tts-us.oss-us-east-1.aliyuncs.com)"
+    ]
+  }
+}
