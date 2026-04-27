@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { prisma } from "@/lib/prisma";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import Link from "next/link";
@@ -11,6 +12,43 @@ export default async function DashboardPage() {
   }
 
   const user = session.user;
+
+  // Fetch stats
+  const [examsTaken, latestResults, recentExams] = await Promise.all([
+    prisma.examSession.count({
+      where: {
+        userId: user.id,
+        status: { in: ["FINISHED", "AUTO_SUBMITTED"] },
+      },
+    }),
+    prisma.result.findMany({
+      where: {
+        session: {
+          userId: user.id,
+          status: { in: ["FINISHED", "AUTO_SUBMITTED"] },
+        },
+      },
+      orderBy: { session: { submittedAt: "desc" } },
+      take: 3,
+      include: {
+        session: {
+          select: {
+            exam: { select: { title: true } },
+            submittedAt: true,
+          },
+        },
+      },
+    }),
+    prisma.exam.findMany({
+      where: { status: true, type: "FREE" },
+      take: 3,
+    }),
+  ]);
+
+  // Calculate average score
+  const avgScore = latestResults.length > 0
+    ? Math.round(latestResults.reduce((sum, r) => sum + r.totalScore, 0) / latestResults.length)
+    : null;
 
   return (
     <div className="space-y-6">
@@ -31,7 +69,7 @@ export default async function DashboardPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Exams Taken</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">0</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{examsTaken}</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
                 <span className="text-xl">📝</span>
@@ -45,7 +83,9 @@ export default async function DashboardPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Avg Score</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">-</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">
+                  {avgScore ?? "-"}
+                </p>
               </div>
               <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
                 <span className="text-xl">📊</span>
@@ -58,11 +98,11 @@ export default async function DashboardPage() {
           <CardContent className="pt-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Access Exams</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">0</p>
+                <p className="text-sm font-medium text-gray-600">Total Attempts</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{latestResults.length}</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
-                <span className="text-xl">🔓</span>
+                <span className="text-xl">🔄</span>
               </div>
             </div>
           </CardContent>
@@ -72,8 +112,10 @@ export default async function DashboardPage() {
           <CardContent className="pt-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Your Rank</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">-</p>
+                <p className="text-sm font-medium text-gray-600">Latest Result</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">
+                  {latestResults[0]?.totalScore ?? "-"}
+                </p>
               </div>
               <div className="w-12 h-12 rounded-full bg-yellow-100 flex items-center justify-center">
                 <span className="text-xl">🏆</span>
@@ -88,28 +130,36 @@ export default async function DashboardPage() {
         {/* Free Exams */}
         <Card>
           <CardHeader>
-            <CardTitle>Free Practice Tests</CardTitle>
-            <CardDescription>Start with free exams to warm up</CardDescription>
+            <CardTitle>Available Exams</CardTitle>
+            <CardDescription>Choose an exam to start</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                    <span>📖</span>
+              {recentExams.map((exam) => (
+                <div key={exam.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                      <span>📖</span>
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900">{exam.title}</p>
+                      <p className="text-sm text-gray-500">{exam.description?.slice(0, 50)}...</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-medium text-gray-900">TOEFL ITP Sample Test</p>
-                    <p className="text-sm text-gray-500">50 questions • 60 minutes</p>
-                  </div>
+                  <Link
+                    href={`/exam/${exam.id}`}
+                    className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Start
+                  </Link>
                 </div>
-                <Link
-                  href="/dashboard/exams/sample"
-                  className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Start
-                </Link>
-              </div>
+              ))}
+              <Link
+                href="/dashboard/exams"
+                className="block text-center text-blue-600 hover:text-blue-700 text-sm py-2"
+              >
+                View All Exams →
+              </Link>
             </div>
           </CardContent>
         </Card>
@@ -117,15 +167,51 @@ export default async function DashboardPage() {
         {/* Recent Activity */}
         <Card>
           <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
-            <CardDescription>Your latest exam attempts</CardDescription>
+            <CardTitle>Recent Results</CardTitle>
+            <CardDescription>Your latest exam scores</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-center py-8 text-gray-500">
-              <span className="text-4xl">📭</span>
-              <p className="mt-2">No recent activity</p>
-              <p className="text-sm">Start your first exam to see your progress here</p>
-            </div>
+            {latestResults.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <span className="text-4xl">📭</span>
+                <p className="mt-2">No results yet</p>
+                <p className="text-sm">Complete an exam to see your scores</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {latestResults.map((result) => (
+                  <Link
+                    key={result.id}
+                    href={`/dashboard/results/${result.sessionId}`}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    <div>
+                      <p className="font-medium text-gray-900">{result.session.exam.title}</p>
+                      <p className="text-xs text-gray-500">
+                        {result.session.submittedAt
+                          ? new Date(result.session.submittedAt).toLocaleDateString()
+                          : "-"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={
+                        result.level === "A" ? "success" :
+                        result.level === "B" ? "warning" : "danger"
+                      }>
+                        Lv.{result.level}
+                      </Badge>
+                      <span className="font-bold text-gray-900">{result.totalScore}</span>
+                    </div>
+                  </Link>
+                ))}
+                <Link
+                  href="/dashboard/results"
+                  className="block text-center text-blue-600 hover:text-blue-700 text-sm py-2"
+                >
+                  View All Results →
+                </Link>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
