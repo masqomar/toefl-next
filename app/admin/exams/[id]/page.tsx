@@ -3,15 +3,17 @@
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
+import { Card, CardContent } from "@/components/ui/Card";
+import { SectionCard, FormGrid, FormField, EmptyState, Tabs, LoadingSpinner } from "@/components/admin/AdminComponents";
+import { QuestionImport } from "@/components/admin/QuestionImport";
 import { AudioUploader } from "@/components/ui/AudioUploader";
 
 interface Question {
   id?: string;
-  questionNumber: number;
+  questionNumber?: number;
   questionText: string;
   passageText?: string;
   audioUrl?: string;
@@ -53,6 +55,7 @@ export default function AdminExamEditPage() {
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [activeTab, setActiveTab] = useState("basic");
 
   const [exam, setExam] = useState<Partial<Exam>>({
     title: "",
@@ -64,6 +67,9 @@ export default function AdminExamEditPage() {
     maxAudioReplay: 2,
     sections: [],
   });
+
+  const [selectedSection, setSelectedSection] = useState(0);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   useEffect(() => {
     if (!isNew && examId) {
@@ -78,7 +84,7 @@ export default function AdminExamEditPage() {
   }, [examId, isNew]);
 
   const handleSave = async () => {
-    if (!exam.title) {
+    if (!exam.title?.trim()) {
       setError("Title is required");
       return;
     }
@@ -109,14 +115,18 @@ export default function AdminExamEditPage() {
   };
 
   const addSection = () => {
-    const sectionTypes = ["LISTENING", "STRUCTURE", "READING"];
+    const types = ["LISTENING", "STRUCTURE", "READING"];
+    const durations: Record<string, number> = { LISTENING: 30, STRUCTURE: 25, READING: 55 };
+    const type = types[exam.sections?.length || 0] || "READING";
+
     const newSection: Section = {
-      title: "",
-      sectionType: sectionTypes[exam.sections?.length || 0] || "READING",
-      duration: 30,
+      title: `${type} Section`,
+      sectionType: type,
+      duration: durations[type],
       questions: [],
     };
     setExam({ ...exam, sections: [...(exam.sections || []), newSection] });
+    setSelectedSection((exam.sections?.length || 0));
   };
 
   const updateSection = (index: number, updates: Partial<Section>) => {
@@ -129,6 +139,7 @@ export default function AdminExamEditPage() {
     const sections = [...(exam.sections || [])];
     sections.splice(index, 1);
     setExam({ ...exam, sections });
+    setSelectedSection(Math.max(0, selectedSection - 1));
   };
 
   const addQuestion = (sectionIndex: number) => {
@@ -159,30 +170,53 @@ export default function AdminExamEditPage() {
     const sections = [...(exam.sections || [])];
     const questions = [...(sections[sectionIndex].questions || [])];
     questions.splice(qIndex, 1);
-    // Renumber
     questions.forEach((q, i) => (q.questionNumber = i + 1));
     sections[sectionIndex] = { ...sections[sectionIndex], questions };
     setExam({ ...exam, sections });
   };
 
+  const handleImportQuestions = (questions: Question[], sectionIndex: number) => {
+    const sections = [...(exam.sections || [])];
+    const existingQuestions = sections[sectionIndex].questions || [];
+    const newQuestions = questions.map((q, i) => ({
+      ...q,
+      questionNumber: existingQuestions.length + i + 1,
+    }));
+    sections[sectionIndex] = {
+      ...sections[sectionIndex],
+      questions: [...existingQuestions, ...newQuestions],
+    };
+    setExam({ ...exam, sections });
+    setShowImportModal(false);
+  };
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="flex items-center justify-center py-20">
+        <LoadingSpinner message="Loading exam..." />
       </div>
     );
   }
 
+  const tabs = [
+    { id: "basic", label: "Basic Info", icon: "📋" },
+    { id: "sections", label: "Sections", icon: "📚" },
+    { id: "settings", label: "Settings", icon: "⚙️" },
+  ];
+
+  const currentSection = exam.sections?.[selectedSection];
+
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
+    <div className="max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
-          <Link href="/admin/exams" className="text-blue-600 hover:text-blue-700 text-sm mb-2 inline-block">
-            ← Back to Exams
+          <Link href="/admin/exams" className="text-blue-600 hover:text-blue-700 text-sm mb-2 inline-flex items-center gap-1">
+            ← Back
           </Link>
           <h1 className="text-2xl font-bold text-gray-900">{isNew ? "Create Exam" : "Edit Exam"}</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-3">
           <Button variant="outline" onClick={() => router.push("/admin/exams")}>
             Cancel
           </Button>
@@ -198,258 +232,351 @@ export default function AdminExamEditPage() {
         </div>
       )}
 
-      {/* Basic Info */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Basic Information</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
-            <Input
-              value={exam.title || ""}
-              onChange={(e) => setExam({ ...exam, title: e.target.value })}
-              placeholder="TOEFL ITP Practice Test"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-            <textarea
-              value={exam.description || ""}
-              onChange={(e) => setExam({ ...exam, description: e.target.value })}
-              placeholder="Full-length practice test..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              rows={3}
-            />
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-              <select
-                value={exam.type || "FREE"}
-                onChange={(e) => setExam({ ...exam, type: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="FREE">Free</option>
-                <option value="PAID">Paid</option>
-              </select>
+      {/* Tabs */}
+      <div className="mb-6">
+        <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === "basic" && (
+        <div className="space-y-6">
+          <SectionCard title="Basic Information" icon="📋">
+            <div className="space-y-4">
+              <FormField
+                label="Exam Title"
+                value={exam.title || ""}
+                onChange={(v) => setExam({ ...exam, title: v as string })}
+                placeholder="TOEFL ITP Practice Test"
+                required
+              />
+              <FormField
+                label="Description"
+                value={exam.description || ""}
+                onChange={(v) => setExam({ ...exam, description: v as string })}
+                type="textarea"
+                placeholder="Describe your exam..."
+                rows={3}
+              />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Price ($)</label>
-              <Input
-                type="number"
+          </SectionCard>
+
+          <SectionCard title="Pricing" icon="💰">
+            <FormGrid cols={2}>
+              <FormField
+                label="Type"
+                value={exam.type || "FREE"}
+                onChange={(v) => setExam({ ...exam, type: v as string })}
+                type="select"
+                options={[
+                  { value: "FREE", label: "Free" },
+                  { value: "PAID", label: "Paid" },
+                ]}
+              />
+              <FormField
+                label="Price ($)"
                 value={exam.price || 0}
-                onChange={(e) => setExam({ ...exam, price: parseFloat(e.target.value) || 0 })}
+                onChange={(v) => setExam({ ...exam, price: v as number })}
+                type="number"
                 min={0}
                 step={0.01}
+                hint="Enter 0 for free exams"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Max Violations</label>
-              <Input
-                type="number"
-                value={exam.maxViolations || 5}
-                onChange={(e) => setExam({ ...exam, maxViolations: parseInt(e.target.value) || 5 })}
-                min={1}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Audio Replays</label>
-              <Input
-                type="number"
-                value={exam.maxAudioReplay || 2}
-                onChange={(e) => setExam({ ...exam, maxAudioReplay: parseInt(e.target.value) || 2 })}
-                min={0}
-              />
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="status"
-              checked={exam.status ?? true}
-              onChange={(e) => setExam({ ...exam, status: e.target.checked })}
-              className="rounded"
-            />
-            <label htmlFor="status" className="text-sm font-medium text-gray-700">
-              Active (visible to users)
-            </label>
-          </div>
-        </CardContent>
-      </Card>
+            </FormGrid>
+          </SectionCard>
+        </div>
+      )}
 
-      {/* Sections */}
-      <Card className="mb-6">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Sections</CardTitle>
-          <Button variant="outline" size="sm" onClick={addSection}>
-            + Add Section
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {(!exam.sections || exam.sections.length === 0) ? (
-            <p className="text-gray-500 text-center py-8">
-              No sections yet. Click "Add Section" to create one.
-            </p>
-          ) : (
-            <div className="space-y-6">
-              {exam.sections?.map((section, sIdx) => (
-                <div key={sIdx} className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1 grid grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
-                        <Input
-                          value={section.title}
-                          onChange={(e) => updateSection(sIdx, { title: e.target.value })}
-                          placeholder="Listening Comprehension"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                        <select
-                          value={section.sectionType}
-                          onChange={(e) => updateSection(sIdx, { sectionType: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="LISTENING">Listening</option>
-                          <option value="STRUCTURE">Structure</option>
-                          <option value="READING">Reading</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Duration (min)</label>
-                        <Input
-                          type="number"
-                          value={section.duration}
-                          onChange={(e) => updateSection(sIdx, { duration: parseInt(e.target.value) || 30 })}
-                          min={1}
-                        />
+      {activeTab === "sections" && (
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Section List */}
+          <div className="lg:col-span-1">
+            <SectionCard
+              title="Sections"
+              icon="📚"
+              actions={
+                <Button size="sm" variant="outline" onClick={addSection}>
+                  + Add
+                </Button>
+              }
+            >
+              {!exam.sections?.length ? (
+                <EmptyState
+                  icon="📚"
+                  title="No sections"
+                  description="Add a section to start"
+                  action={<Button size="sm" onClick={addSection}>Add Section</Button>}
+                />
+              ) : (
+                <div className="space-y-2">
+                  {exam.sections.map((section, idx) => (
+                    <div
+                      key={idx}
+                      onClick={() => setSelectedSection(idx)}
+                      className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                        selectedSection === idx
+                          ? "bg-blue-50 border border-blue-300"
+                          : "bg-gray-50 hover:bg-gray-100"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-sm">{section.title}</p>
+                          <p className="text-xs text-gray-500">
+                            {section.sectionType} • {section.duration}min
+                          </p>
+                        </div>
+                        <Badge variant="default">{section.questions?.length || 0}</Badge>
                       </div>
                     </div>
+                  ))}
+                </div>
+              )}
+            </SectionCard>
+          </div>
+
+          {/* Section Editor */}
+          <div className="lg:col-span-3">
+            {currentSection ? (
+              <div className="space-y-6">
+                <SectionCard
+                  title={currentSection.title}
+                  icon={currentSection.sectionType === "LISTENING" ? "🎧" : currentSection.sectionType === "STRUCTURE" ? "📐" : "📚"}
+                  actions={
                     <Button
-                      variant="ghost"
                       size="sm"
-                      onClick={() => removeSection(sIdx)}
-                      className="text-red-600 hover:text-red-700 ml-4"
+                      variant="ghost"
+                      onClick={() => removeSection(selectedSection)}
+                      className="text-red-600 hover:text-red-700"
                     >
-                      ✕
+                      Delete
+                    </Button>
+                  }
+                >
+                  <FormGrid cols={3}>
+                    <FormField
+                      label="Title"
+                      value={currentSection.title}
+                      onChange={(v) => updateSection(selectedSection, { title: v as string })}
+                    />
+                    <FormField
+                      label="Type"
+                      value={currentSection.sectionType}
+                      onChange={(v) => updateSection(selectedSection, { sectionType: v as string })}
+                      type="select"
+                      options={[
+                        { value: "LISTENING", label: "Listening" },
+                        { value: "STRUCTURE", label: "Structure" },
+                        { value: "READING", label: "Reading" },
+                      ]}
+                    />
+                    <FormField
+                      label="Duration (minutes)"
+                      value={currentSection.duration}
+                      onChange={(v) => updateSection(selectedSection, { duration: v as number })}
+                      type="number"
+                      min={1}
+                    />
+                  </FormGrid>
+                </SectionCard>
+
+                {/* Questions */}
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-gray-900">
+                    Questions ({currentSection.questions?.length || 0})
+                  </h3>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowImportModal(true)}
+                    >
+                      📥 Import
+                    </Button>
+                    <Button size="sm" onClick={() => addQuestion(selectedSection)}>
+                      + Add
                     </Button>
                   </div>
-
-                  {/* Questions */}
-                  <div className="border-t pt-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <h4 className="font-medium text-gray-900">
-                        Questions ({section.questions?.length || 0})
-                      </h4>
-                      <Button variant="outline" size="sm" onClick={() => addQuestion(sIdx)}>
-                        + Add Question
-                      </Button>
-                    </div>
-
-                    {(!section.questions || section.questions.length === 0) ? (
-                      <p className="text-gray-500 text-sm text-center py-4">
-                        No questions yet
-                      </p>
-                    ) : (
-                      <div className="space-y-4">
-                        {section.questions.map((q, qIdx) => (
-                          <div key={qIdx} className="bg-gray-50 rounded-lg p-4">
-                            <div className="flex items-start justify-between mb-3">
-                              <Badge variant="info">Q{qIdx + 1}</Badge>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => removeQuestion(sIdx, qIdx)}
-                                className="text-red-600 hover:text-red-700"
-                              >
-                                ✕
-                              </Button>
-                            </div>
-
-                            {section.sectionType === "LISTENING" && (
-                              <div className="mb-3">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Audio File</label>
-                                <AudioUploader
-                                  value={q.audioUrl || ""}
-                                  onChange={(url) => updateQuestion(sIdx, qIdx, { audioUrl: url })}
-                                />
-                              </div>
-                            )}
-
-                            {section.sectionType === "READING" && (
-                              <div className="mb-3">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Passage</label>
-                                <textarea
-                                  value={q.passageText || ""}
-                                  onChange={(e) => updateQuestion(sIdx, qIdx, { passageText: e.target.value })}
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                                  rows={4}
-                                  placeholder="Reading passage text..."
-                                />
-                              </div>
-                            )}
-
-                            <div className="mb-3">
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Question Text</label>
-                              <Input
-                                value={q.questionText}
-                                onChange={(e) => updateQuestion(sIdx, qIdx, { questionText: e.target.value })}
-                                placeholder="What is the main idea of the passage?"
-                              />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3">
-                              {["A", "B", "C", "D"].map((opt) => (
-                                <div key={opt}>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Option {opt}
-                                  </label>
-                                  <Input
-                                    value={q[`option${opt}` as keyof Question] as string}
-                                    onChange={(e) => updateQuestion(sIdx, qIdx, { [`option${opt}`]: e.target.value } as any)}
-                                    placeholder={`Option ${opt}`}
-                                  />
-                                </div>
-                              ))}
-                            </div>
-
-                            <div className="mt-3">
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Correct Answer
-                              </label>
-                              <select
-                                value={q.correctAnswer}
-                                onChange={(e) => updateQuestion(sIdx, qIdx, { correctAnswer: e.target.value })}
-                                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                              >
-                                <option value="A">A</option>
-                                <option value="B">B</option>
-                                <option value="C">C</option>
-                                <option value="D">D</option>
-                              </select>
-                            </div>
-
-                            <div className="mt-3">
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Explanation</label>
-                              <Input
-                                value={q.explanation || ""}
-                                onChange={(e) => updateQuestion(sIdx, qIdx, { explanation: e.target.value })}
-                                placeholder="Why is this the correct answer?"
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+
+                {showImportModal && (
+                  <QuestionImport
+                    sectionType={currentSection.sectionType as "LISTENING" | "STRUCTURE" | "READING"}
+                    onImport={(questions) => handleImportQuestions(questions, selectedSection)}
+                  />
+                )}
+
+                {!currentSection.questions?.length ? (
+                  <Card>
+                    <CardContent className="py-12">
+                      <EmptyState
+                        icon="❓"
+                        title="No questions yet"
+                        description="Add questions manually or import from CSV"
+                        action={
+                          <div className="flex gap-2 justify-center">
+                            <Button variant="outline" onClick={() => setShowImportModal(true)}>
+                              📥 Import CSV
+                            </Button>
+                            <Button onClick={() => addQuestion(selectedSection)}>
+                              + Add Question
+                            </Button>
+                          </div>
+                        }
+                      />
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="space-y-4">
+                    {currentSection.questions.map((q, qIdx) => (
+                      <Card key={qIdx}>
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between mb-4">
+                            <Badge variant="info">Question {qIdx + 1}</Badge>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => removeQuestion(selectedSection, qIdx)}
+                              className="text-red-600"
+                            >
+                              ✕
+                            </Button>
+                          </div>
+
+                          {currentSection.sectionType === "LISTENING" && (
+                            <div className="mb-4">
+                              <label className="block text-sm font-medium text-gray-700 mb-1">Audio File</label>
+                              <AudioUploader
+                                value={q.audioUrl || ""}
+                                onChange={(url) => updateQuestion(selectedSection, qIdx, { audioUrl: url })}
+                              />
+                            </div>
+                          )}
+
+                          {currentSection.sectionType === "READING" && (
+                            <div className="mb-4">
+                              <FormField
+                                label="Passage Text"
+                                value={q.passageText || ""}
+                                onChange={(v) => updateQuestion(selectedSection, qIdx, { passageText: v as string })}
+                                type="textarea"
+                                rows={4}
+                                placeholder="Reading passage..."
+                              />
+                            </div>
+                          )}
+
+                          <FormField
+                            label="Question Text"
+                            value={q.questionText}
+                            onChange={(v) => updateQuestion(selectedSection, qIdx, { questionText: v as string })}
+                            type="textarea"
+                            rows={2}
+                            required
+                          />
+
+                          <FormGrid cols={2} className="mt-4">
+                            <FormField
+                              label="Option A"
+                              value={q.optionA}
+                              onChange={(v) => updateQuestion(selectedSection, qIdx, { optionA: v as string })}
+                              required
+                            />
+                            <FormField
+                              label="Option B"
+                              value={q.optionB}
+                              onChange={(v) => updateQuestion(selectedSection, qIdx, { optionB: v as string })}
+                              required
+                            />
+                            <FormField
+                              label="Option C"
+                              value={q.optionC}
+                              onChange={(v) => updateQuestion(selectedSection, qIdx, { optionC: v as string })}
+                              required
+                            />
+                            <FormField
+                              label="Option D"
+                              value={q.optionD}
+                              onChange={(v) => updateQuestion(selectedSection, qIdx, { optionD: v as string })}
+                              required
+                            />
+                          </FormGrid>
+
+                          <FormGrid cols={2} className="mt-4">
+                            <FormField
+                              label="Correct Answer"
+                              value={q.correctAnswer}
+                              onChange={(v) => updateQuestion(selectedSection, qIdx, { correctAnswer: v as string })}
+                              type="select"
+                              options={[
+                                { value: "A", label: "A" },
+                                { value: "B", label: "B" },
+                                { value: "C", label: "C" },
+                                { value: "D", label: "D" },
+                              ]}
+                            />
+                            <FormField
+                              label="Explanation"
+                              value={q.explanation || ""}
+                              onChange={(v) => updateQuestion(selectedSection, qIdx, { explanation: v as string })}
+                            />
+                          </FormGrid>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Card>
+                <CardContent className="py-12">
+                  <EmptyState
+                    icon="📚"
+                    title="Select a section"
+                    description="Choose a section from the list to edit questions"
+                  />
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === "settings" && (
+        <div className="space-y-6">
+          <SectionCard title="Anti-Cheat Settings" icon="🔒">
+            <FormGrid cols={2}>
+              <FormField
+                label="Max Violations"
+                value={exam.maxViolations || 5}
+                onChange={(v) => setExam({ ...exam, maxViolations: v as number })}
+                type="number"
+                min={1}
+                max={10}
+                hint="Auto-submit after this many violations"
+              />
+              <FormField
+                label="Audio Replay Limit"
+                value={exam.maxAudioReplay || 2}
+                onChange={(v) => setExam({ ...exam, maxAudioReplay: v as number })}
+                type="number"
+                min={0}
+                max={10}
+                hint="Max replays per audio (0 = no limit)"
+              />
+            </FormGrid>
+          </SectionCard>
+
+          <SectionCard title="Status" icon="📊">
+            <FormField
+              label="Active"
+              value={exam.status ?? true}
+              onChange={(v) => setExam({ ...exam, status: v as boolean })}
+              type="checkbox"
+              hint="Exam will be visible to users"
+            />
+          </SectionCard>
+        </div>
+      )}
     </div>
   );
 }

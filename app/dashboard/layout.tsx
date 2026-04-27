@@ -18,6 +18,7 @@ export default async function DashboardRootLayout({
       name: session.user.name || "User",
       email: session.user.email || "",
       role: session.user.role,
+      image: session.user.image,
     }}>
       {children}
     </DashboardLayout>

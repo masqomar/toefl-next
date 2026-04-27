@@ -16,6 +16,7 @@ const navItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: "🏠" },
   { label: "Try Out", href: "/dashboard/exams", icon: "📝" },
   { label: "Results", href: "/dashboard/results", icon: "📊" },
+  { label: "Redeem Voucher", href: "/dashboard/redeem", icon: "🎫" },
   { label: "Profile", href: "/dashboard/profile", icon: "👤" },
   { label: "Settings", href: "/dashboard/settings", icon: "⚙️" },
 ];
@@ -32,6 +33,7 @@ interface DashboardLayoutProps {
     name: string;
     email: string;
     role: string;
+    image?: string | null;
   };
 }
 
@@ -120,8 +122,12 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
         {/* User info & logout */}
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200 bg-white">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-              <span className="text-blue-600 font-medium">{user.name?.charAt(0).toUpperCase()}</span>
+            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center overflow-hidden">
+              {user.image ? (
+                <img src={user.image} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-blue-600 font-medium">{user.name?.charAt(0).toUpperCase()}</span>
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">{user.name}</p>
